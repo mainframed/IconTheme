@@ -897,7 +897,7 @@ class IconTheme(Gtk.Application):
     def select_icon_from_exec(self, icon_data):
         log.debug("Creating Icon Selection Window")
         self.icon_select_window = Gtk.Window()
-        self.icon_select_window.set_default_size(500, 500)
+        self.icon_select_window.set_default_size(700, 400)
         icon_window = Gtk.ScrolledWindow()
         self.icon_view_liststore = Gtk.ListStore(GdkPixbuf.Pixbuf, int)
         self.iconview = Gtk.IconView.new()
@@ -911,7 +911,8 @@ class IconTheme(Gtk.Application):
 
         hb = Gtk.HeaderBar()
         hb.set_show_close_button(False)
-        hb.props.title = "Select Icon"
+        hb.props.title = "Select Replacement Icon"
+        hb.set_subtitle(f"{Path(self.replacement_icons_lib.filename).name}")
         self.icon_select_window.set_titlebar(hb)
 
         button = Gtk.Button(label="Select")
@@ -932,7 +933,7 @@ class IconTheme(Gtk.Application):
             id = icon['ID']
             if 'index' in icon:
                 id = icon['index']
-            self.icon_view_liststore.append([self.image2pixbuf(img),int(id)])
+            self.icon_view_liststore.append([self.image2pixbuf(img.resize((64,64))),int(id)])
 
         self.icon_select_window.show_all()
 
@@ -1483,7 +1484,8 @@ class IconTheme(Gtk.Application):
 
         hb = Gtk.HeaderBar()
         hb.set_show_close_button(False)
-        hb.props.title = f"Theme Options"
+        hb.props.title = f"Theme Settings"
+        hb.set_subtitle("Change theme name and comment")
         self.options_window.set_titlebar(hb)
 
         button = Gtk.Button(label="Ok")
