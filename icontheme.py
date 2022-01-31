@@ -9,14 +9,13 @@ import logging
 import icotool
 import os
 import io
-import sys
 from pathlib import Path
-from PIL import BmpImagePlugin, PngImagePlugin, Image
+from PIL import Image
 from pprint import pprint
 import configparser
 import magic
-import glob
 
+import argparse
 
 
 menu_def = '''
@@ -176,12 +175,9 @@ class IconTheme(Gtk.Application):
         filename=None, 
         show_symbolics=True, 
         context="Typical", 
-        base_theme=None, 
         skip_legacy_context=True,
     ):
 
-
-        log.setLevel(logging.DEBUG)
         logging.getLogger().handlers.clear()
         log.addHandler(handler)
 
@@ -204,12 +200,12 @@ class IconTheme(Gtk.Application):
         self.theme_config_file = configparser.ConfigParser()
         self.theme_config_file.optionxform = str
         self.theme_config_file.read_string(THEME_HEADER)
-        self.theme_file_path = ''
+        self.theme_file_path = filename
 
 
         self.settings = Gtk.Settings.get_default()
         self.system_theme = self.settings.props.gtk_icon_theme_name
-        self.base_theme = base_theme
+        self.base_theme = self.system_theme
         self.selected_theme = None
 
         Gtk.Application.__init__(self,
@@ -217,8 +213,6 @@ class IconTheme(Gtk.Application):
                                  flags=Gio.ApplicationFlags.FLAGS_NONE)
         # https://developer.gnome.org/gio/unstable/GApplication.html#g-application-id-is-valid
 
-        if not base_theme:
-            self.base_theme = self.system_theme
 
 
         # GTK Settings
@@ -249,6 +243,12 @@ class IconTheme(Gtk.Application):
         #self.available_icon_themes = self.builder.get_object("available_icon_themes")
         self.search_button = self.builder.get_object("search_button")
         self.window.set_icon_from_file(str(Path(running_folder) / "icontheme.png"))
+        # For copy/paste
+        accel = Gtk.AccelGroup()
+        accel.connect(Gdk.keyval_from_name('c'), Gdk.ModifierType.CONTROL_MASK, 0, self.copy)
+        accel.connect(Gdk.keyval_from_name('v'), Gdk.ModifierType.CONTROL_MASK, 0, self.paste)
+        self.window.add_accel_group(accel)
+        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
 
         self.update_all_icons()
         self.build_menu_logic()
@@ -256,12 +256,13 @@ class IconTheme(Gtk.Application):
         self.get_theme()
         self.update_available_icons()
 
-        # For copy/paste
-        accel = Gtk.AccelGroup()
-        accel.connect(Gdk.keyval_from_name('c'), Gdk.ModifierType.CONTROL_MASK, 0, self.copy)
-        accel.connect(Gdk.keyval_from_name('v'), Gdk.ModifierType.CONTROL_MASK, 0, self.paste)
-        self.window.add_accel_group(accel)
-        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        if self.theme_file_path:
+            self.process_theme_file(self.theme_file_path)
+            self.apply_theme()
+
+        
+        if not self.global_context:
+            self.change_context_menu_radio.set_state(GLib.Variant("s", 'All'))
 
         self.window.show_all()
 
@@ -308,6 +309,7 @@ class IconTheme(Gtk.Application):
             self.replacement_images.append([image, image.get_height()])
             self.replace_icons()                
     
+
     def show_right_click_menu(self, widget, event):
         if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 3:
             log.debug("Showing right click menu")
@@ -623,8 +625,8 @@ class IconTheme(Gtk.Application):
         # connect the dialog with the callback function open_response_cb()
         dialog.connect("response", self.open_theme_response)
         #always set open to start in home folder instead of recent
-        if self.theme_file:
-            dialog.set_current_folder(str(self.path_file.parents[0]))
+        if self.theme_file_path:
+            dialog.set_current_folder(str(Path(self.theme_file_path).parents[0]))
         else:
             dialog.set_current_folder(str(Path.home()))
         # show the dialog
@@ -1084,7 +1086,8 @@ class IconTheme(Gtk.Application):
             self.changes[selected_icon[3]]['Icons'] = list()
             for icon in self.replacement_images:
                 self.changes[selected_icon[3]]['Icons'].append([icon[0], icon[1], self.replacement_icon_path])
-                
+        
+        self.save_button(True)
         self.apply_changes()
             
     def apply_changes(self):
@@ -1099,7 +1102,7 @@ class IconTheme(Gtk.Application):
                     icon_pixbuf = row[0].scale_simple(64, 64, GdkPixbuf.InterpType.BILINEAR)
             log.debug(f"Applying new change to {change}")
             self.replace_icon_pixbuf(change, icon_pixbuf, self.replacement_icon_path)
-        self.save_button(True)
+        
     
     def apply_theme_file_changes(self):
         # if any exist apply theme file changes
@@ -1413,9 +1416,9 @@ class IconTheme(Gtk.Application):
             context_menu.append_item(context_menuitem)
         
 
-        change_context = Gio.SimpleAction.new_stateful("change-context", GLib.VariantType.new("s"), GLib.Variant("s", "Typical"))
-        change_context.connect("activate", self.change_context)
-        self.window.add_action(change_context)
+        self.change_context_menu_radio = Gio.SimpleAction.new_stateful("change-context", GLib.VariantType.new("s"), GLib.Variant("s", "Typical"))
+        self.change_context_menu_radio.connect("activate", self.change_context)
+        self.window.add_action(self.change_context_menu_radio)
 
         context_menu_button.set_menu_model(self.builder.get_object('icon_context_menu'))
 
@@ -1437,9 +1440,10 @@ class IconTheme(Gtk.Application):
         return pix
 
     def save_button(self, sensitivity):
-            self.save_as_menuitem.set_enabled(sensitivity)
-            self.save_menuitem.set_enabled(sensitivity)
-            self.builder.get_object("save").set_sensitive(sensitivity)
+        log.debug(f"Setting save sensitivity to {sensitivity}")
+        self.save_as_menuitem.set_enabled(sensitivity)
+        self.save_menuitem.set_enabled(sensitivity)
+        self.builder.get_object("save").set_sensitive(sensitivity)
 
 #### Icon Theme Options Window
     def theme_options_window(self, action, variant):
@@ -1508,6 +1512,21 @@ class IconTheme(Gtk.Application):
     def theme_options_cancel(self, button):
         self.options_window.destroy()
 
-log.setLevel(logging.DEBUG)
-win = IconTheme()
+log.setLevel(logging.WARNING)
+
+desc = 'GTK Icon Theme Editor and Builder. Supports JPG, PNG, ICO, ICL, DLL and EXE files.'
+arg_parser = argparse.ArgumentParser(description=desc)
+arg_parser.add_argument('-d', '--debug', help="Print debugging statements", action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING)
+arg_parser.add_argument("-t","--theme", help="Icon index.theme file to open", default=None)
+arg_parser.add_argument("-s", "--dont-show-symbolics", help="Do not show symbolic icons", default=True, action="store_false")
+arg_parser.add_argument("-a", "--all", help="Default view of all icons", default=False, action="store_true")
+args = arg_parser.parse_args()
+
+log.setLevel(args.loglevel)
+
+context = "Typical"
+if args.all:
+    context = None
+
+win = IconTheme(filename=args.theme, show_symbolics=args.dont_show_symbolics,context=context)
 Gtk.main()
