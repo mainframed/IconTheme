@@ -97,6 +97,9 @@ and selecting *Theme Options*.
 To remove any changes and reset back to the base them, select the icon(s) and press
 the <kbd>DEL</kbd> key.
 
+For icons, the great icon packs at https://freeware.iconfactory.com/icons work very well
+but any ICO will work. There are multiple icon packs on Deviant art.
+
 ## Examples
 
 #### Replace an Icon with a Windows ICO file
