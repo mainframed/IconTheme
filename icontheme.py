@@ -1337,7 +1337,10 @@ class IconTheme(Gtk.Application):
         self.update_all_icons()
         self.get_theme()
         self.update_available_icons()
-        self.apply_theme_file_changes()
+        self.apply_theme_file_changes() 
+        # if icons are missing we add them to the list of available icons
+        # but it means we have to refresh this list again
+        self.update_available_icons()
         self.apply_changes()
 
     def new_from_base(self, action=None, variant=None):
