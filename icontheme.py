@@ -1,7 +1,5 @@
-import mimetypes
-import gi
-from soupsieve import select
 
+import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gio, Gdk, GLib, GdkPixbuf
 
@@ -11,7 +9,6 @@ import os
 import io
 from pathlib import Path
 from PIL import Image
-from pprint import pprint
 import configparser
 import magic
 
@@ -82,6 +79,10 @@ menu_def = '''
   <menu id="right_click_menu">
     <section>
       <item>
+        <attribute name="label">Change Icon</attribute>
+        <attribute name="action">win.change</attribute>
+      </item>
+      <item>
         <attribute name="label">Copy</attribute>
         <attribute name="action">win.copy</attribute>
       </item>
@@ -146,9 +147,11 @@ CONTEXTS = {
     "Emotes"       : "emotes",
     "International": "intl",
     "MimeTypes"    : "mimetypes",
+    "Mimetypes"    : "mimetypes",
     "Places"       : "places",
     "Status"       : "status",
-    "Stock"        : "stock"
+    "Stock"        : "stock",
+    "Apps"         : "apps"
 }
 
 THEME_HEADER = '''[Icon Theme]
@@ -440,6 +443,8 @@ class IconTheme(Gtk.Application):
                 return
             else:
                 self.rmdir(icon_theme_folder)
+        
+        self.theme_file_path = icon_theme_folder
             
         self.save_all_changes(icon_theme_folder)
 
@@ -656,6 +661,10 @@ class IconTheme(Gtk.Application):
         file_filter.add_pattern("*.icl")
         file_filter.add_pattern("*.exe")
         file_filter.add_pattern("*.EXE")
+        file_filter.add_pattern("*.png")
+        file_filter.add_pattern("*.PNG")
+        file_filter.add_pattern("*.jpg")
+        file_filter.add_pattern("*.JPG")
         dialog.add_filter(file_filter)
         file_filter = Gtk.FileFilter()
         file_filter.set_name("All Files")
@@ -668,6 +677,14 @@ class IconTheme(Gtk.Application):
         # connect the dialog with the callback function open_response_cb()
         dialog.connect("response", self.open_icon_response)
         #always set open to start in home folder instead of recent
+        selection = self.get_selected()
+        if len(selection) > 0:
+            name, context, filepath, fullname = selection[-1]
+            # if this icon already has been changed
+            # show the folder the icon was from not the default
+            if fullname in self.changes:        
+                dialog.set_current_folder(str(Path(filepath).parents[0]))
+
         # show the dialog
         dialog.show()  
     
@@ -1150,16 +1167,25 @@ class IconTheme(Gtk.Application):
         if len(item) > 1:
             self.update_status_bar(f"{len(item)} icons selected")
             self.builder.get_object("change_icon_bar").set_sensitive(True)
+            self.copy_menu.set_enabled(True)
+            self.paste_menu.set_enabled(True)
+            self.change_menu.set_enabled(True)
             # self.builder.get_object("change_icon").set_label("Change Icons...")
         elif len(item) == 1:
             name,context,filepath,fullname = item[0]
             self.update_status_bar(f"Path: {filepath} Name: {fullname}, Context: {context}")
             log.debug(f"Name: {name}, Context: {context}, Path: {filepath}")
             self.builder.get_object("change_icon_bar").set_sensitive(True)
+            self.copy_menu.set_enabled(True)
+            self.paste_menu.set_enabled(True)
+            self.change_menu.set_enabled(True)
             # self.builder.get_object("revealer").set_reveal_child(True)
         else:
             self.update_status_bar()
             self.builder.get_object("change_icon_bar").set_sensitive(False)
+            self.copy_menu.set_enabled(False)
+            self.paste_menu.set_enabled(False)
+            self.change_menu.set_enabled(False)
 
     def get_selected(self):
         selected_icons = list()
@@ -1365,15 +1391,23 @@ class IconTheme(Gtk.Application):
         self.save_as_menuitem.set_enabled(False)
         self.window.add_action(self.save_as_menuitem)
 
-        copy = Gio.SimpleAction.new("copy")
-        copy.connect("activate", self.copy)
+        self.copy_menu = Gio.SimpleAction.new("copy")
+        self.copy_menu.connect("activate", self.copy)
         self.set_accels_for_action("win.copy", ["c"])
-        self.window.add_action(copy)
+        self.window.add_action(self.copy_menu)
 
-        paste = Gio.SimpleAction.new("paste")
-        paste.connect("activate", self.paste)
+        self.change_menu = Gio.SimpleAction.new("change")
+        self.change_menu.connect("activate", self.choose_icon)
+        self.window.add_action(self.change_menu)
+
+        self.paste_menu = Gio.SimpleAction.new("paste")
+        self.paste_menu.connect("activate", self.paste)
         self.set_accels_for_action("win.paste", ["v"])
-        self.window.add_action(paste)
+        self.window.add_action(self.paste_menu)
+
+        self.copy_menu.set_enabled(False)
+        self.paste_menu.set_enabled(False)
+        self.change_menu.set_enabled(False)
 
         self.right_click_menu_button = Gtk.Menu.new_from_model(self.builder.get_object('right_click_menu'))
         self.right_click_menu_button.attach_to_widget(self.builder.get_object("select_icons"))
