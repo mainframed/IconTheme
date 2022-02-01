@@ -738,7 +738,7 @@ class IconTheme(Gtk.Application):
     def apply_theme(self):
 
         if not self.theme_config_file.has_option('Icon Theme','Inherits'):
-            inherits ='default'
+            inherits ='hicolor'
         else:
             inherits = self.theme_config_file['Icon Theme']['Inherits'].split(",")[0].strip('"')
 
@@ -1130,24 +1130,32 @@ class IconTheme(Gtk.Application):
                 if int(row[1]) > size:
                     size = int(row[1])
                     icon_pixbuf = row[0].scale_simple(64, 64, GdkPixbuf.InterpType.BILINEAR)
+                    path = row[2]
             log.debug(f"Applying loaded theme file change to {change}: {row[2]}")
-            self.replace_icon_pixbuf(change, icon_pixbuf, row[2])    
+            if not self.replace_icon_pixbuf(change, icon_pixbuf, row[2]):
+                for context in self.theme_file_changes[change]['Contexts']:
+                    self.icons_list.append([icon_pixbuf, change , 0.5, context, path])
 
     def replace_icon_pixbuf(self, icon_name, pixbuf, new_icon_path):
         log.debug(f"Replacing {icon_name}")
 
+        found = False
         for i in range(len(self.icons_list)):
             if self.icons_list[i][1] == icon_name:
                 log.debug(f"Replacing {self.icons_list[i][1]} with new icon")
+                found = True
                 self.icons_list[i][0] = pixbuf
-
         treeiter = self.available_icons.get_iter_first()
         while treeiter:
             if self.available_icons.get_value(treeiter, 5) == icon_name:
                 log.debug("Updating Iconview Window ")
+                found = True
                 self.available_icons.set_value(treeiter, 0, pixbuf)
                 self.available_icons.set_value(treeiter, 4, new_icon_path)
             treeiter = self.available_icons.iter_next(treeiter)
+
+        return found
+
 
     def get_context(self, icon_name):
         contexts = list()
