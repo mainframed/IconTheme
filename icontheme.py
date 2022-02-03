@@ -133,7 +133,7 @@ ICONS = [
 IMAGE_FILES = [
     "application/x-dosexec",
     "image/vnd.microsoft.icon",
-    "image/png", "image/jpeg"
+    "image/png", "image/jpeg", "image/x-tga"
 ]
 
 CONTEXTS = {
@@ -198,6 +198,7 @@ class IconTheme(Gtk.Application):
 
         self.theme_name = ''
         self.theme_comment = ''
+        self.selected_file = ''
 
 
         self.theme_config_file = configparser.ConfigParser()
@@ -677,6 +678,10 @@ class IconTheme(Gtk.Application):
         # connect the dialog with the callback function open_response_cb()
         dialog.connect("response", self.open_icon_response)
         #always set open to start in home folder instead of recent
+
+        if self.selected_file:
+            dialog.set_current_folder(str(self.selected_file.parents[0]))
+
         selection = self.get_selected()
         if len(selection) > 0:
             name, context, filepath, fullname = selection[-1]
@@ -821,21 +826,22 @@ class IconTheme(Gtk.Application):
         if response_id == Gtk.ResponseType.OK:
 
             log.debug("Response OK")
-            selected_file = Path(open_dialog.get_filename())
-            mimetype = magi.from_file(str(selected_file)).split(";")[0]
+            self.selected_file = Path(open_dialog.get_filename())
+            mimetype = magi.from_file(str(self.selected_file)).split(";")[0]
             if mimetype in IMAGE_FILES:
                 log.debug(f"Selected file type: {mimetype}")
-                self.get_replacement_icons(selected_file, mimetype)
+                self.get_replacement_icons(self.selected_file, mimetype)
                 if self.replacement_images:
                     self.replace_icons()
             else:
                 dialog.destroy()
-                self.wrong_image_file_error(str(selected_file), mimetype)
+                self.wrong_image_file_error(str(self.selected_file), mimetype)
         # if response is "CANCEL" (the button "Cancel" has been clicked)
         elif response_id == Gtk.ResponseType.CANCEL:
             log.debug("File open cancelled")
         # destroy the FileChooserDialog
         dialog.destroy()
+        
 
     
     def get_replacement_icons(self, selected_file, mimetype):
@@ -857,7 +863,7 @@ class IconTheme(Gtk.Application):
         self.replacement_images = list()
         self.replacement_icon_path = str(selected_file)
 
-        if mimetype in ["image/png", "image/jpeg"]:
+        if mimetype in ["image/png", "image/jpeg", "image/x-tga"]:
             self.process_image_file(selected_file)
         else:
             # The file is a ico, dll, exe, or icl
